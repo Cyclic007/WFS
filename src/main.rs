@@ -8,8 +8,9 @@ mod filesystem;
 use std::env;
 use std::ffi::{OsStr, OsString};
 use filesystem::WeirdFileSystem;
-
-
+mod blocks;
+mod driveActions;
+mod handles;
 
 struct ConsoleLogger;
 

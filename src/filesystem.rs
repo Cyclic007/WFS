@@ -8,8 +8,8 @@ use std::fs::File;
 use std::time::SystemTime;
 use std::collections::VecDeque;
 use std::ffi::{CStr, CString, OsStr, OsString};
-
-
+use super::blocks::{StartBlock, DataBlock};
+use super::driveActions::*;
 
 
 pub struct WeirdFileSystem{
