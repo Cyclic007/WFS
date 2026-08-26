@@ -15,6 +15,7 @@
 
 
 // holds all metadata
+#[derive(Clone)]
 pub struct StartBlock{
 	block_index 			: u32, 			// 0x00  ->  0x03
 	first_data_block_index 	: u32, 			// 0x04  ->  0x07
@@ -28,11 +29,12 @@ pub struct StartBlock{
 	group_id 				: u32,			// 0x24  ->  0x27
 	size 					: u64,			// 0x28  ->  0x2F
 
-	name 					: [u8 ; 108]	// 0x30  ->  0xFF
+	name 					: [u8 ; 208]	// 0x30  ->  0xFF
 	
 }
 
 // holds any and all data
+#[derive(Clone)]
 pub struct DataBlock{
 	block_index 			: u32, 			// 0x00  ->  0x03
 
@@ -41,10 +43,12 @@ pub struct DataBlock{
 	next_block_index 		: u32			// 0xFC  ->  0xFF
 }
 
+#[derive(Clone)]
 pub struct RawBlock{
 	pub data : [u8 ; 256]					// 0x00  ->  0xFF
 }
 
+#[derive(Clone)]
 pub struct RawBlockWithIndex{
 	pub block_index : u32,					// 0x00  ->  0x03
 	pub data : [u8;252]						// 0x04  ->  0xFF
@@ -66,10 +70,11 @@ impl StartBlock {
 		group_id : u32,						// 0x24  ->  0x27
 		size : u64,							// 0x28  ->  0x2F
 	
-		name : [u8 ; 108]					// 0x30  ->  0xFF
+		name : [u8 ; 208]					// 0x30  ->  0xFF
 	) -> Self
 	{
 		Self {
+			block_index,
 			first_data_block_index,
 			perms,
 			file_type,
@@ -86,17 +91,17 @@ impl StartBlock {
 
 
 	//getters
-	pub fn get_block_index(&self) -> u32 {self.block_index}	
-	pub fn get_first_data_block_index(&self) -> u32{self.first_data_block_index}
-	pub fn get_perms(&self) -> u16{self.perms}
-	pub fn get_file_type(&self) -> u16{self.file_type}
-	pub	fn get_a_time(&self) -> u64{self.a_time}
-	pub	fn get_m_time(&self) -> u64{self.m_time}
-	pub	fn get_user_id(&self) -> u32{self.user_id}
-	pub	fn get_group_id(&self) -> u32{self.group_id}
-	pub	fn get_size(&self) -> u64{self.size}
-	pub fn get_raw_name(&self) -> [u8 ; 108] {self.name}
-	pub fn get_name(&self) -> &str {self.name.try_to_str().unwrap()}
+	pub fn get_block_index(&self) -> &u32 {&self.block_index}	
+	pub fn get_first_data_block_index(&self) -> &u32{&self.first_data_block_index}
+	pub fn get_perms(&self) -> &u16{&self.perms}
+	pub fn get_file_type(&self) -> &u16{&self.file_type}
+	pub	fn get_a_time(&self) -> &u64{&self.a_time}
+	pub	fn get_m_time(&self) -> &u64{&self.m_time}
+	pub	fn get_user_id(&self) -> &u32{&self.user_id}
+	pub	fn get_group_id(&self) -> &u32{&self.group_id}
+	pub	fn get_size(&self) -> &u64{&self.size}
+	pub fn get_raw_name(&self) -> [u8 ; 208] {self.name.clone()}
+	pub fn get_name(&self) -> String {String::from_utf8(self.name.clone().to_vec()).unwrap()}
 
 	//setters
 	pub fn set_block_index(&mut self, new_index : u32) {self.block_index = new_index}
@@ -108,8 +113,8 @@ impl StartBlock {
 	pub fn set_user_id(&mut self, new_user_id : u32) {self.user_id = new_user_id}
 	pub fn set_group_id(&mut self, new_group_id : u32) {self.group_id = new_group_id}
 	pub fn set_size(&mut self, new_size : u64) {self.size = new_size}
-	pub fn set_raw_name(&mut self, new_raw_name : [u8 ; 108]) {self.name = new_raw_name}
-	pub fn set_name (&mut self, new_name : &str) {self.name = new_name.to_bytes()}
+	pub fn set_raw_name(&mut self, new_raw_name : [u8 ; 208]) {self.name = new_raw_name}
+	pub fn set_name (&mut self, new_name : &str) {self.name = <[u8;208]>::try_from(new_name.as_bytes()).unwrap()}
 }
 
 
@@ -160,24 +165,24 @@ impl DataBlock {
 	}
 	
 
-	pub fn get_block_index(&self) -> u32 {self.block_index}
-	pub fn get_data(&self) -> [u8 ; 248] {self.data}
-	pub fn get_next_block_index(&self) -> u32 {self.next_block_index}
+	pub fn get_block_index(&self) -> &u32 {&self.block_index}
+	pub fn get_data(&self) -> &[u8 ; 248] {&self.data}
+	pub fn get_next_block_index(&self) -> &u32 {&self.next_block_index}
 
 	pub fn set_block_index(&mut self, new_index : u32) {self.block_index = new_index}
 	pub fn set_next_block_index(&mut self, new_index : u32) {self.next_block_index = new_index}
 
 
 	// This is specal and requires an offset so that you dont need to remove the data entirely to change it
-	pub fn set_data(&mut self , new_data : Vec<u8>, offset : u8) -> Result<u32, &'static str>{
+	pub fn set_data(&mut self , new_data : Vec<u8>, offset : usize) -> Result<u32, &'static str>{
 		if offset + new_data.len() > 248{
-			Err("trying to write outside of block")
+			return Err("trying to write outside of block")
 		}
 	
 		for i in 0..new_data.len(){
-			self.data[i+offset] = new_data.get(i)
+			self.data[i+offset] = new_data[i]
 		}
-		Ok()
+		Ok(20)
 	}
 
 
@@ -187,30 +192,30 @@ impl DataBlock {
 
 
 impl From<RawBlock> for DataBlock{
-	fn from(&raw_block : RawBlock) -> Self{
+	fn from(raw_block : RawBlock) -> Self{
 		Self{
-			block_index : u32::from_ne_bytes(raw_block.data[0..4]),
-			data : raw_block.data[4..252],
-			next_block_index : u32::from_ne_bytes(raw_block.data[252..256]),
+			block_index : u32::from_ne_bytes(<[u8;4]>::try_from(&raw_block.data[0..4]).unwrap()),
+			data : <[u8;248]>::try_from(&raw_block.data[4..252]).unwrap(),
+			next_block_index : u32::from_ne_bytes(<[u8;4]>::try_from(&raw_block.data[252..256]).unwrap()),
 
 		}
 	}	
 }
 
 impl From<RawBlock> for StartBlock{
-	fn from(&raw_block : RawBlock) -> Self{
+	fn from(raw_block : RawBlock) -> Self{
 		Self{
-			block_index : u32::from_ne_bytes(raw_block.data[0..4]),
-			first_data_block_index  : u32::from_ne_bytes(raw_block.data[4..8]),
-			perms :  u16::from_ne_bytes(raw_block.data[8..10]),
-			file_type : u16::from_ne_bytes(raw_block.data[10..12]),
+			block_index : u32::from_ne_bytes(<[u8;4]>::try_from(&raw_block.data[0..4]).unwrap()),
+			first_data_block_index  : u32::from_ne_bytes(<[u8;4]>::try_from(&raw_block.data[4..8]).unwrap()),
+			perms :  u16::from_ne_bytes(<[u8;2]>::try_from(&raw_block.data[8..10]).unwrap()),
+			file_type : u16::from_ne_bytes(<[u8;2]>::try_from(&raw_block.data[10..12]).unwrap()),
 			//padding
-			a_time :  u64::from_ne_bytes(raw_block.data[16..24]),
-			m_time :  u64::from_ne_bytes(raw_block.data[24..32]),
-			user_id : u32::from_ne_bytes(raw_block.data[32..36]),
-			group_id : u32::from_ne_bytes(raw_block.data[36..40]),
-			size : u64::from_ne_bytes(raw_block.data[40..48]),
-			name : raw_block.data[48..256]
+			a_time :  u64::from_ne_bytes(<[u8;8]>::try_from(&raw_block.data[16..24]).unwrap()),
+			m_time :  u64::from_ne_bytes(<[u8;8]>::try_from(&raw_block.data[24..32]).unwrap()),
+			user_id : u32::from_ne_bytes(<[u8;4]>::try_from(&raw_block.data[32..36]).unwrap()),
+			group_id : u32::from_ne_bytes(<[u8;4]>::try_from(&raw_block.data[36..40]).unwrap()),
+			size : u64::from_ne_bytes(<[u8;8]>::try_from(&raw_block.data[40..48]).unwrap()),
+			name : <[u8;208]>::try_from(&raw_block.data[48..256]).unwrap()
 		}
 	}
 }
@@ -220,7 +225,7 @@ impl From<RawBlock> for StartBlock{
 
 
 impl From<DataBlock> for RawBlock{
-	fn from(&data_block : DataBlock) -> Self{
+	fn from(data_block : DataBlock) -> Self{
 		let mut data_vec : Vec<u8> = Vec::with_capacity(256);
 
 		for byte in data_block.get_block_index().to_ne_bytes(){
@@ -244,13 +249,13 @@ impl From<DataBlock> for RawBlock{
 
 
 impl From<StartBlock> for RawBlock{
-	fn from(&start_block : StartBlock) -> Self{
+	fn from(start_block : StartBlock) -> Self{
 		let mut data_vec : Vec<u8> = Vec::with_capacity(256);
 
 		for byte in start_block.get_block_index().to_ne_bytes(){
 			data_vec.push(byte);
 		}
-		for byte in start_block.get_first_block_index().to_ne_bytes(){
+		for byte in start_block.get_first_data_block_index().to_ne_bytes(){
 			data_vec.push(byte);
 		}		
 		for byte in start_block.get_perms().to_ne_bytes(){
@@ -259,7 +264,7 @@ impl From<StartBlock> for RawBlock{
 		for byte in start_block.get_file_type().to_ne_bytes(){
 			data_vec.push(byte);
 		}
-		for i in 0..5{
+		for _i in 0..5{
 			data_vec.push(0);
 		}
 		for byte in start_block.get_a_time().to_ne_bytes(){
@@ -277,7 +282,7 @@ impl From<StartBlock> for RawBlock{
 		for byte in start_block.get_size().to_ne_bytes(){
 			data_vec.push(byte);
 		}
-		for byte in start_block.get_name(){
+		for byte in start_block.get_raw_name(){
 			data_vec.push(byte);
 		}
 		

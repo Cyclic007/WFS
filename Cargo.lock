@@ -8,6 +8,8 @@ version = "0.1.0"
 dependencies = [
  "fuse_mt",
  "lazy_static",
+ "libc",
+ "log",
 ]
 
 [[package]]
