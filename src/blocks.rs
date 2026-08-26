@@ -131,7 +131,7 @@ impl DataBlock {
 		}
 	}
 
-	pub fn new_plain (
+	pub fn new_plain_dir (
 		block_index : u32
 	) -> Self{
 		Self{
@@ -140,6 +140,25 @@ impl DataBlock {
 			next_block_index : u32::MAX,
 		}
 	}
+	pub fn new_plain_file (
+		block_index : u32
+	) -> Self{
+		Self{
+			block_index,
+			data : [0; 248],
+			next_block_index : u32::MAX,
+		}
+	}	
+	pub fn new_plain(
+		block_index : u32,
+		is_directory : bool
+	) -> Self {
+		match is_directory {
+			true => Self::new_plain_dir(block_index),
+			false => Self::new_plain_file(block_index),
+		}
+	}
+	
 
 	pub fn get_block_index(&self) -> u32 {self.block_index}
 	pub fn get_data(&self) -> [u8 ; 248] {self.data}
