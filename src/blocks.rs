@@ -12,6 +12,8 @@
 
 
 //block definitions
+use fuse_mt::{FileAttr,FileType};
+use std::time::*;
 
 
 // holds all metadata
@@ -115,6 +117,38 @@ impl StartBlock {
 	pub fn set_size(&mut self, new_size : u64) {self.size = new_size}
 	pub fn set_raw_name(&mut self, new_raw_name : [u8 ; 208]) {self.name = new_raw_name}
 	pub fn set_name (&mut self, new_name : &str) {self.name = <[u8;208]>::try_from(new_name.as_bytes()).unwrap()}
+
+
+	pub fn get_file_attr(&self) -> FileAttr {
+		FileAttr{
+			size: self.size,
+			blocks : self.size/248+1,
+			atime : SystemTime::UNIX_EPOCH.clone().checked_add(Duration::from_secs(self.a_time)).unwrap(),
+			mtime : SystemTime::UNIX_EPOCH.clone().checked_add(Duration::from_secs(self.m_time)).unwrap(),
+			ctime : SystemTime::UNIX_EPOCH.clone().checked_add(Duration::from_secs(self.m_time)).unwrap(),
+			crtime : SystemTime::UNIX_EPOCH.clone().checked_add(Duration::from_secs(self.m_time)).unwrap(),
+			kind : match self.file_type{
+								1 => FileType::NamedPipe,
+								2 => FileType::CharDevice,
+								3 => FileType::Directory,
+								4 => FileType::RegularFile,
+								5 => FileType::Symlink,
+								6 => FileType::Socket,
+								_ => FileType::RegularFile,
+							},
+			perm : self.perms,
+			nlink : 1,
+			uid : self.user_id,
+			gid : self.group_id,
+			rdev: 0,
+			flags : 0,
+		}
+		
+	}
+
+
+
+
 }
 
 

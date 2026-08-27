@@ -6,18 +6,18 @@ use std::{
 };
 use super::blocks::{StartBlock, DataBlock, RawBlock};
 use fuse_mt::{DirectoryEntry,FileType};
-
-
-fn get_offset_from_block_index(block_index : u32) -> Result<u32, &'static str>{
+use fuse_mt::*;
+use super::results::*;
+fn get_offset_from_block_index(block_index : u32) -> ResultBlockIndex{
 	Ok(u32::try_from(block_index*256).unwrap())
 }
 
 fn direct_raw_block_read(
 	drive_file : &File,
 	block_index : u32,	
-) -> Result<RawBlock, &'static str>{
+) -> ResultRawBlock{
 	if block_index == u32::MAX {
-		return Err("null block index")
+		return Err(libc::EIO)
 	}
 	let read_offset = get_offset_from_block_index(block_index)?;
 	let mut read_buffer : [u8 ; 256] = [0 ; 256];
@@ -34,20 +34,20 @@ fn direct_raw_block_write(
 	drive_file : &File,
 	block_index : u32,
 	block : RawBlock
-) -> Result<u32, &'static str>{
+) -> ResultEmpty{
 	if block_index == u32::MAX {
-		return Err("null block index")
+		return Err(libc::EIO)
 	}
 	let write_offset = get_offset_from_block_index(block_index)?;
 	drive_file.write_all_at(&block.data,u64::try_from(write_offset).unwrap());
-	Ok(100)
+	Ok(())
 }
 
 
 pub fn data_block_read(
 	drive_file : &File,
 	block_index: u32,
-) -> Result<DataBlock, &'static str>{
+) -> ResultDataBlock{
 	Ok(
 		DataBlock::from(direct_raw_block_read(drive_file,block_index)?)
 	)
@@ -56,7 +56,7 @@ pub fn data_block_read(
 pub fn start_block_read(
 	drive_file : &File,
 	block_index: u32,
-) -> Result<StartBlock, &'static str>{
+) -> ResultStartBlock{
 	Ok(
 		StartBlock::from(direct_raw_block_read(drive_file,block_index)?)
 	)
@@ -65,7 +65,7 @@ pub fn start_block_read(
 pub fn data_block_write(
 	drive_file : &File,
 	block : DataBlock,
-) -> Result<u32, &'static str>{
+) -> ResultEmpty{
 	direct_raw_block_write(
 		drive_file,
 		block.get_block_index().clone(),
@@ -75,7 +75,7 @@ pub fn data_block_write(
 pub fn start_block_write(
 	drive_file : &File,
 	block : StartBlock,
-) -> Result<u32, &'static str>{
+) ->ResultEmpty{
 	direct_raw_block_write(
 		drive_file,
 		block.get_block_index().clone(),
@@ -87,7 +87,7 @@ pub fn start_block_write(
 fn get_data_block_vec_from_first_data_block_index(
 	drive_file : &File,
 	first_block_index : u32,
-) -> Result< Vec<DataBlock>, &'static str>{
+) -> ResultDataBlockVector{
 	let mut block_vec : Vec<DataBlock> = Vec::new(); 
 	let first_block = data_block_read(drive_file,first_block_index)?;
 	block_vec.push(first_block.clone());
@@ -104,7 +104,7 @@ fn get_data_block_vec_from_first_data_block_index(
 fn get_data_block_vec_from_start_block(
 	drive_file : &File,
 	start_block : StartBlock
-) -> Result< Vec<DataBlock>, &'static str> {
+) -> ResultDataBlockVector {
 	get_data_block_vec_from_first_data_block_index(
 		drive_file,
 		start_block.clone().get_first_data_block_index().clone()
@@ -114,7 +114,7 @@ fn get_data_block_vec_from_start_block(
 fn get_data_block_vec_from_start_block_index(
 	drive_file : &File,
 	start_block_index : u32,
-) -> Result< Vec<DataBlock>, &'static str>{
+) -> ResultDataBlockVector{
 	get_data_block_vec_from_start_block(
 		drive_file,
 		start_block_read(
@@ -128,7 +128,7 @@ fn get_data_block_vec_from_start_block_index(
 
 fn get_data_vec_from_data_block_vec(
 	data_block_vec : Vec<DataBlock>
-) -> Result< Vec<u8>, &'static str>{
+) -> ResultDataVector{
 	let mut data_vec : Vec<u8> = Vec::new();
 	for block in data_block_vec{
 		for byte in block.get_data().clone(){
@@ -141,7 +141,7 @@ fn get_data_vec_from_data_block_vec(
 
 fn get_directory_index_vec_from_data_block_vec(
 	data_block_vec : Vec<DataBlock>
-) -> Result< Vec<u32>, &'static str>{
+) -> ResultBlockIndexVector{
 	let mut directory_vector : Vec<u32> = Vec::new();
 	let data_vec : Vec<u8> = get_data_vec_from_data_block_vec(data_block_vec)?;
 	for directory_chunk in data_vec.chunks_exact(4){
@@ -161,7 +161,7 @@ fn get_directory_index_vec_from_data_block_vec(
 pub fn get_file_data_from_start_block_index(
 	drive_file : &File,
 	start_block_index : u32
-)  -> Result< Vec<u8>, &'static str>{
+)  -> ResultDataVector{
 	get_data_vec_from_data_block_vec(
 		get_data_block_vec_from_start_block_index(drive_file,start_block_index)?
 	)
@@ -171,7 +171,7 @@ pub fn get_file_data_from_start_block_index(
 fn get_directory_data_from_start_block_index(
 	drive_file : &File,
 	start_block_index : u32
-) -> Result< Vec<u32>, &'static str>{
+) -> ResultBlockIndexVector{
 	get_directory_index_vec_from_data_block_vec(
 		get_data_block_vec_from_start_block_index(drive_file,start_block_index)?
 	)
@@ -182,7 +182,7 @@ fn get_directory_data_from_start_block_index(
 pub fn get_directory_entry_vec_from_start_block_index(
 	drive_file : &File,
 	start_block_index : u32
-) -> Result<Vec<DirectoryEntry>, &'static str> {
+) -> ResultReaddir {
 	let directory_indexes = get_directory_data_from_start_block_index( drive_file, start_block_index)?;
 	let mut directory_entries : Vec<DirectoryEntry> = Vec::new();
 	for index in directory_indexes {
@@ -211,7 +211,7 @@ fn get_start_block_from_name_and_directory_start_block_index(
 	drive_file: &File,
 	directory_start_block_index : u32,
 	name : OsString,
-) -> Result<Option<StartBlock>, &'static str> {
+) -> ResultStartBlockOption  {
 	let directory_data = get_directory_data_from_start_block_index(drive_file,directory_start_block_index)?;
 	for index in directory_data{
 		let current_start_block = start_block_read(drive_file, index)?;
@@ -227,9 +227,9 @@ fn get_start_block_from_name_and_directory_start_block_index(
 pub fn get_start_block_from_path(
 	drive_file : &File,
 	path : &OsStr
-) -> Result<Option<StartBlock>, &'static str>{
+) -> ResultStartBlockOption{
 	let name_list : Vec<&str> = path.to_str().unwrap().splitn(20, "/").collect();
-	let mut current_block_index = 0;
+	let mut current_block_index = 1;
 	for name in name_list.clone(){
 		let current_start_block = get_start_block_from_name_and_directory_start_block_index ( drive_file , current_block_index , OsString::from(name))?.unwrap();
 		if current_start_block.get_name().eq(name_list[name_list.clone().len()-1]){
@@ -243,17 +243,17 @@ pub fn get_start_block_from_path(
 fn find_next_empty_blocks(
 	drive_file : &File,
 	number_of_blocks : usize,
-) -> Vec<u32> {
+) -> ResultBlockIndexVector {
 	let mut index_vec : Vec<u32> = Vec::with_capacity(number_of_blocks);
 	for i in 0..u32::MAX{
 		if data_block_read(drive_file,i).unwrap().get_block_index().clone() != i{
 			index_vec.push(i);
 			if index_vec.len() == number_of_blocks{
-				return index_vec
+				return Ok(index_vec)
 			}
 		}
 	}
-	return index_vec
+	return Ok(index_vec)
 }
 
 
@@ -262,17 +262,30 @@ fn find_next_empty_blocks(
 
 
 //This does not add it to a parent directory
-pub fn create_new_empty_directory (
+pub fn write_new_empty_directory (
 	drive_file : &File,
 	start_block : &mut StartBlock,
-) -> StartBlock {
-	let empty_blocks = find_next_empty_blocks(drive_file,2);
+) -> ResultStartBlock{
+	let empty_blocks = find_next_empty_blocks(drive_file,2)?;
 	start_block.set_block_index(empty_blocks[0]);
 	start_block.set_first_data_block_index(empty_blocks[1]);
 	data_block_write(drive_file,DataBlock::new_plain_dir(empty_blocks[1]));
 	start_block_write(drive_file, start_block.clone());
-	return start_block.clone()
+	return Ok(start_block.clone())
 }
+
+pub fn write_new_empty_file (
+	drive_file : &File,
+	start_block : &mut StartBlock,
+) -> ResultStartBlock{
+	let empty_blocks = find_next_empty_blocks(drive_file,2)?;
+	start_block.set_block_index(empty_blocks[0]);
+	start_block.set_first_data_block_index(empty_blocks[1]);
+	data_block_write(drive_file,DataBlock::new_plain_file(empty_blocks[1]));
+	start_block_write(drive_file, start_block.clone());
+	return Ok(start_block.clone())
+}
+
 
 
 
@@ -281,7 +294,7 @@ pub fn expand_file (
 	start_block : StartBlock,
 	number_of_additonal_blocks : usize,
 	is_directory : bool
-) -> Result<u32, &'static str> {
+) -> ResultEmpty {
 	let current_data_block_index = start_block.get_first_data_block_index().clone();
 	let mut current_data_block = data_block_read(drive_file,current_data_block_index)?;
 	let current_data_block_index = current_data_block.get_next_block_index().clone();
@@ -290,27 +303,27 @@ pub fn expand_file (
 		let _current_data_block_index = current_data_block.get_next_block_index();
 	}
 
-	let new_block_indexes = find_next_empty_blocks(drive_file,number_of_additonal_blocks);
+	let new_block_indexes = find_next_empty_blocks(drive_file,number_of_additonal_blocks)?;
 	current_data_block.set_next_block_index(new_block_indexes[0]);
 	data_block_write(drive_file,current_data_block);
 	for i in 1..new_block_indexes.len(){
 		data_block_write(
 			drive_file,
-			DataBlock{
-				block_index : new_block_indexes[i],
-				data : match is_directory{
+			DataBlock::new(
+				new_block_indexes[i],
+				match is_directory{
 					true => [225;248],
 					false => [0;248]
 				},
-				next_block_index : new_block_indexes[i+1]	
-			}
-		);
+				 new_block_indexes[i+1]	
+			)
+		)?;
 		if i ==  new_block_indexes.len()-1{
 			data_block_write(drive_file,DataBlock::new_plain(new_block_indexes[i],is_directory));
 			break;
 		}
 	}
-	Ok(27)
+	Ok(())
 }
 
 
@@ -322,9 +335,9 @@ fn data_block_vector_write(
 	drive_file : &File,
 	mut data_block_vector : Vec<DataBlock>,
 	data_block_index_vector : Vec<u32>
-) -> Result<u32, &'static str> {
+) -> ResultEmpty {
 	if data_block_index_vector.len() != data_block_index_vector.len(){
-		return Err("number of blocks is not equal to number of indexes")
+		return Err(libc::EDOM)
 	}
 
 	
@@ -342,7 +355,7 @@ fn data_block_vector_write(
 			block
 		);
 	}
-	Ok(42)
+	Ok(())
 	
 }
 
@@ -356,15 +369,16 @@ fn data_block_vector_set_data_from_data_vector(
 	data_block_vector : &mut Vec<DataBlock>,
 	data_vector : &mut Vec<u8>,
 	first_block_offset : usize, //Offset to start writeing only for the first block in the vector
-) -> Result<Vec<DataBlock>, &'static str> {
+	block_offset : usize,
+) -> ResultDataBlockVector {
 	
 	let total_written_size = first_block_offset+ data_vector.len();
 	if total_written_size / 248 > data_block_vector.len()*248 {
-		return Err("trying to write outside of blocks")		
+		return Err(libc::ERANGE)		
 	} 
 	
 	let remaining_data = data_vector.split_off(248-first_block_offset);	
-	data_block_vector[0].set_data(data_vector.clone(),first_block_offset);
+	data_block_vector[block_offset].set_data(data_vector.clone(),first_block_offset);
 	let mut remaining_data_iderator = remaining_data.iter();
 	for i in 1..data_block_vector.len(){
 		let mut data_to_write : Vec<u8> = Vec::new();
@@ -375,7 +389,7 @@ fn data_block_vector_set_data_from_data_vector(
 			};
 			data_to_write.push(current_byte.clone());
 		}
-		data_block_vector[i].set_data(data_to_write,0);
+		data_block_vector[i+block_offset].set_data(data_to_write,0);
 	}
 	Ok(data_block_vector.clone())
 }
@@ -396,7 +410,7 @@ pub fn write_to_file(
 	data : &mut Vec<u8>,
 	start_block : &mut StartBlock,
 	
-) -> Result<u64, &'static str>{
+) -> ResultSize{
 
 
 	//first need to check if the file size needs to be changed and if it needs more blocks
@@ -425,18 +439,132 @@ pub fn write_to_file(
 	}
 	let first_block_offset = offset % 248;
 	
-	let blocks_to_be_written : Vec<DataBlock> = data_block_vector_set_data_from_data_vector(&mut modified_data_block_vector,data,first_block_offset)?;
+	let blocks_to_be_written : Vec<DataBlock> = data_block_vector_set_data_from_data_vector(&mut modified_data_block_vector,data,first_block_offset,0)?;
 	
 	for block in blocks_to_be_written{
 		data_block_write(drive_file,block);
 	}
-	Ok(start_block.clone().get_size().clone())
+	Ok(usize::try_from(start_block.clone().get_size().clone()).unwrap())
 
 
 
 }
 
 
+
+pub fn check_if_block_is_empty(
+	drive_file : &File,
+	block_index_to_be_checked : u32
+) -> ResultBool{
+	let raw_block = direct_raw_block_read(drive_file,block_index_to_be_checked)?;
+	let data = raw_block.data;
+	for byte in data{
+		if byte != 0 {
+			return Ok(false)
+		}
+	}
+	Ok(true)
+}
+
+
+pub fn normal_data_block_vector_write(
+	drive_file : &File,
+	data_block_vector : Vec<DataBlock>,
+) -> ResultEmpty  {
+	for block in data_block_vector{
+		data_block_write(drive_file,block);
+	}
+	Ok(())
+}
+
+
+
+
+fn modify_directory_contents(
+	drive_file : &File,
+	directory_entry_index : u32,
+	new_directory_entry_data : u32,
+	directory_start_block : &mut  StartBlock,
+) -> ResultEmpty {
+	
+	
+	let mut data_block_vec = get_data_block_vec_from_start_block(drive_file,directory_start_block.clone())?;
+	let new_data = new_directory_entry_data.to_ne_bytes();
+	let data_offset : usize = usize::try_from(directory_entry_index*4).unwrap();
+
+
+	
+	let modified_data_block_vec = data_block_vector_set_data_from_data_vector(
+		&mut data_block_vec,
+		&mut new_data.to_vec(),
+		data_offset % 248,
+		data_offset / 248
+	).unwrap();
+	normal_data_block_vector_write(drive_file,modified_data_block_vec);
+	Ok(())
+}
+
+
+
+
+
+
+
+
+
+
+fn append_directory_content(
+	drive_file : &File,
+	new_directory_entry_data : u32,
+	directory_start_block : &mut StartBlock
+) -> ResultEmpty{
+	let directory_data = get_directory_data_from_start_block_index(drive_file,directory_start_block.get_block_index().clone())?;
+	for i in 0..directory_data.len(){
+		if directory_data.get(i).unwrap().clone() == u32::MAX{
+			modify_directory_contents(drive_file, u32::try_from(i).unwrap(),new_directory_entry_data,directory_start_block)?;
+			return Ok(())	
+		}
+	}
+	// if you are here all avalible slots are taken
+	// we must expand
+	// THE MONGLES
+	// WE ARE THE EXEPTION
+
+	expand_file(drive_file,directory_start_block.clone(),1,true)?;
+	let directory_data = get_directory_data_from_start_block_index(drive_file,directory_start_block.get_block_index().clone())?;
+	for i in 0..directory_data.len(){
+		if directory_data.get(i).unwrap().clone() == u32::MAX{
+			modify_directory_contents(drive_file, u32::try_from(i).unwrap(),new_directory_entry_data,directory_start_block)?;
+			return Ok(())	
+		}
+	}
+	Ok(())
+}
+
+
+
+
+
+pub fn create_empty_directory(
+	drive_file : &File,
+	parent_start_block : &mut StartBlock,
+	child_start_block : &mut StartBlock
+	
+) -> ResultBlockIndex {
+	let new_child_start_block = write_new_empty_directory(drive_file,&mut child_start_block.clone())?;
+	append_directory_content(drive_file,new_child_start_block.get_block_index().clone(),parent_start_block);
+	Ok(child_start_block.get_block_index().clone())
+}
+
+pub fn create_empty_file(
+	drive_file : &File,
+	parent_start_block : &mut StartBlock,
+	child_start_block : &mut StartBlock
+) -> ResultBlockIndex {
+	let new_child_start_block = write_new_empty_file(drive_file,&mut child_start_block.clone())?;
+	append_directory_content(drive_file,new_child_start_block.get_block_index().clone(),parent_start_block);
+	Ok(child_start_block.get_block_index().clone())
+}
 
 
 

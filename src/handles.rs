@@ -3,7 +3,7 @@ use log::{debug, error};
 use std::ptr;
 use std::path::PathBuf;
 use lazy_static::lazy_static;
-use super::blocks::{StartBlock,DataBlock,RawDataBlock};
+use super::blocks::{StartBlock,DataBlock};
 use super::driveActions::{get_start_block_from_path};
 #[derive(Clone)]
 pub struct FileHandle {
@@ -141,8 +141,8 @@ impl FileHandle {
 
 	
 	pub fn get_start_block_index(&mut self, file : &File) -> u32{
-		let start_block = get_start_block_from_path(file,self.path);	
-		self.start_block_index = start_block.get_block_index();
+		let start_block = get_start_block_from_path(file,&OsString::try_from(self.path.to_str().unwrap()).unwrap()).unwrap().unwrap();	
+		self.start_block_index = start_block.clone().get_block_index().clone();
 		self.start_block_index	
 	
 		

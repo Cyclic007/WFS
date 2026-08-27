@@ -4,7 +4,7 @@ use fuse_mt::*;
 use std::time::Duration;
 use std::io::prelude::*;
 use std::io;
-use std::path::Path;
+use std::path::{Path,PathBuf};
 use std::fs::File;
 use std::time::SystemTime;
 use std::collections::VecDeque;
@@ -12,6 +12,8 @@ use std::ffi::{CStr, CString, OsStr, OsString};
 use super::blocks::{StartBlock, DataBlock};
 use super::driveActions::*;
 use super::handles::*;
+
+
 pub struct WeirdFileSystem{
 	target : OsString,
 }
@@ -32,8 +34,30 @@ impl WeirdFileSystem{
 
 
 impl FilesystemMT for WeirdFileSystem{
-    fn init(&self, _req: RequestInfo) -> ResultEmpty {
-				
+    fn init(&self, req: RequestInfo) -> ResultEmpty {
+		let root = File::options()
+				    .read(true)
+				    .write(true)
+				    .open(self.target.clone()).unwrap();
+		if check_if_block_is_empty(&root,1).expect("could not check if block is empty"){
+
+			let mut new_start_block = StartBlock::new(
+				0,
+				1,
+				551, // 777 in octal
+				3,
+				SystemTime::now().duration_since(SystemTime::UNIX_EPOCH).expect("time is broken").as_secs(),
+				SystemTime::now().duration_since(SystemTime::UNIX_EPOCH).expect("time is broken").as_secs(),
+				req.uid,
+				req.gid,
+				0,
+				[0;208]
+			);
+			write_new_empty_directory(
+				&root,
+				&mut new_start_block
+			);
+		}
 		
 
 
@@ -173,8 +197,8 @@ impl FilesystemMT for WeirdFileSystem{
     /// Return a tuple of (file handle, flags). The file handle will be passed to any subsequent
     /// calls that operate on the file, and can be any value you choose, though it should allow
     /// your filesystem to identify the file opened even without any path info.
-    fn open(&self, _req: RequestInfo, _path: &Path, _flags: u32) -> ResultOpen {
-        Err(libc::ENOSYS)
+    fn open(&self, _req: RequestInfo, path: &Path, flags: u32) -> ResultOpen {
+        Ok((FileHandle::new(Box::from(path)).allocate(),flags))
     }
 
     /// Read from a file.
@@ -351,8 +375,9 @@ impl FilesystemMT for WeirdFileSystem{
     ///
     /// Return `Ok(())` if all requested permissions are allowed, otherwise return `Err(EACCES)`
     /// or other error code as appropriate (e.g. `ENOENT` if the file doesn't exist).
-    fn access(&self, _req: RequestInfo, _path: &Path, _mask: u32) -> ResultEmpty {
-        Err(libc::ENOSYS)
+    fn access(&self, _req: RequestInfo, _path: &Path, mask: u32) -> ResultEmpty {
+        println!("{}",mask);
+        Ok(())
     }
 
     /// Create and open a new file.
@@ -364,8 +389,54 @@ impl FilesystemMT for WeirdFileSystem{
     ///
     /// Return a `CreatedEntry` (which contains the new file's attributes as well as a file handle
     /// -- see documentation on `open` for more info on that).
-    fn create(&self, _req: RequestInfo, _parent: &Path, _name: &OsStr, _mode: u32, _flags: u32) -> ResultCreate {
-        Err(libc::ENOSYS)
+    fn create(&self, req: RequestInfo, parent: &Path, name: &OsStr, _mode: u32, flags: u32) -> ResultCreate {
+		let current_time = SystemTime::now();
+		let root = File::options()
+				    .read(true)
+				    .write(true)
+				    .open(self.target.clone()).unwrap();
+		let mut temp_parent_handle = FileHandle::new(Box::from(parent));
+		let parent_start_block_index = temp_parent_handle.get_start_block_index(&root);
+		let parent_start_block = start_block_read(&root,parent_start_block_index)?;
+		let mut name_byte_vector : Vec<u8> = Vec::new();
+
+		for byte in name.as_encoded_bytes(){
+			name_byte_vector.push(byte.clone())
+		}
+		for _i in name.len()-1..208{
+			name_byte_vector.push(0)
+		}
+
+		
+		let mut child_start_block = StartBlock::new(
+			0,
+			0,
+			420,
+			4,
+			SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_secs(),
+			SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_secs(),
+			req.uid,
+			req.gid,
+			0,
+			<[u8;208]>::try_from(name_byte_vector).unwrap()
+			
+
+		);
+			
+		
+        create_empty_file(&root,&mut parent_start_block.clone(),&mut child_start_block)?;
+        let child_handle = FileHandle::new(Box::from(parent.join(PathBuf::from(name))));
+        let handle_number = child_handle.allocate();
+		let file_attr = child_start_block.clone().get_file_attr();
+		let ttl = current_time.elapsed().unwrap();
+		Ok(
+			CreatedEntry{
+				fh : handle_number,
+				ttl,
+				attr: file_attr ,
+				flags,
+			}
+		)
     }
 	
 }
