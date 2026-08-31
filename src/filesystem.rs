@@ -7,10 +7,10 @@ use std::time::SystemTime;
 use std::ffi::{ OsStr, OsString};
 
 use super::blocks::{StartBlock};
-use super::driveActions::*;
+use super::drive_actions::*;
 use super::handles::*;
 
-
+/// The Filesystem Implemetaion [FilesystemMT]
 pub struct WeirdFileSystem{
 	target : OsString,
 }
@@ -26,9 +26,6 @@ impl WeirdFileSystem{
 
 
 
-//
-
-
 
 impl FilesystemMT for WeirdFileSystem{
     fn init(&self, req: RequestInfo) -> ResultEmpty {
@@ -36,7 +33,7 @@ impl FilesystemMT for WeirdFileSystem{
 				    .read(true)
 				    .write(true)
 				    .open(self.target.clone()).unwrap();
-		if check_if_block_is_empty(&root,1).expect("could not check if block is empty"){
+		if block_actions::check_if_block_is_empty(&root,1).expect("could not check if block is empty"){
 
 			let mut new_start_block = StartBlock::new(
 				0,
@@ -50,7 +47,7 @@ impl FilesystemMT for WeirdFileSystem{
 				0,
 				[0;208]
 			);
-			write_new_empty_directory(
+			write_utils::write_new_empty_directory(
 				&root,
 				&mut new_start_block
 			)?;
@@ -82,7 +79,7 @@ impl FilesystemMT for WeirdFileSystem{
         	None => FileHandle::new(Box::from(path))
         };
 
-        let start_block = start_block_read(&root,handle.get_start_block_index(&root)?)?;
+        let start_block = block_actions::start_block_read(&root,handle.get_start_block_index(&root)?)?;
         let file_attr = start_block.get_file_attr();
         let ttl = current_time.elapsed().unwrap();
 
@@ -110,10 +107,10 @@ impl FilesystemMT for WeirdFileSystem{
         	None => FileHandle::new(Box::from(path))
         };
 
-        let mut start_block = start_block_read(&root,handle.get_start_block_index(&root)?)?;
+        let mut start_block = block_actions::start_block_read(&root,handle.get_start_block_index(&root)?)?;
 
 		start_block.set_perms(u16::try_from(mode).unwrap());
-		start_block_write(&root,start_block)?;
+		block_actions::start_block_write(&root,start_block)?;
 
         Ok(())
     }
@@ -137,7 +134,7 @@ impl FilesystemMT for WeirdFileSystem{
 			None => FileHandle::new(Box::from(path))
 		};
 
-		let mut start_block = start_block_read(&root,handle.get_start_block_index(&root)?)?;
+		let mut start_block = block_actions::start_block_read(&root,handle.get_start_block_index(&root)?)?;
 
 		match uid {
 			Some(user_id) => start_block.set_user_id(user_id),
@@ -148,7 +145,7 @@ impl FilesystemMT for WeirdFileSystem{
 			None => println!("no gid provided")
 		}
 
-		start_block_write(&root,start_block)?;
+		block_actions::start_block_write(&root,start_block)?;
 		Ok(())
         
     }
@@ -168,16 +165,16 @@ impl FilesystemMT for WeirdFileSystem{
 			Some(num) => FileHandle::read(num),
 			None => FileHandle::new(Box::from(path))
 		};
-		let mut start_block = start_block_read(&root,handle.get_start_block_index(&root)?)?;
+		let mut start_block = block_actions::start_block_read(&root,handle.get_start_block_index(&root)?)?;
 		let current_file_size = start_block.get_size().clone();
 		if current_file_size > size {
-			reduce_file_size(&root, &mut start_block,size)?;
+			file_utils::reduce_file_size(&root, &mut start_block,size)?;
 		}
 		if current_file_size < size {
-			expand_file(&root,start_block.clone(),usize::try_from(current_file_size-size).unwrap(),false)?;
+			file_utils::expand_file(&root,start_block.clone(),usize::try_from(current_file_size-size).unwrap(),false)?;
 		}
 		start_block.set_size(size);
-		start_block_write(&root,start_block)?;
+		block_actions::start_block_write(&root,start_block)?;
 		Ok(())
     }
 
@@ -196,7 +193,7 @@ impl FilesystemMT for WeirdFileSystem{
 			Some(num) => FileHandle::read(num),
 			None => FileHandle::new(Box::from(path))
 		};
-		let mut start_block = start_block_read(&root,handle.get_start_block_index(&root)?)?;
+		let mut start_block = block_actions::start_block_read(&root,handle.get_start_block_index(&root)?)?;
 		match atime {
 			Some(time) => start_block.set_a_time(time.duration_since(std::time::UNIX_EPOCH).unwrap().as_secs()),
 			None => println!("no atime provided")
@@ -206,7 +203,7 @@ impl FilesystemMT for WeirdFileSystem{
 			None => println!("no mtime provided")
 		}
 
-		start_block_write(&root,start_block)?;
+		block_actions::start_block_write(&root,start_block)?;
 		Ok(())
     }
 
@@ -243,7 +240,7 @@ impl FilesystemMT for WeirdFileSystem{
         		    .open(self.target.clone()).unwrap();
         let mut temp_parent_handle = FileHandle::new(Box::from(parent));
         let parent_start_block_index = temp_parent_handle.get_start_block_index(&root)?;
-        let parent_start_block = start_block_read(&root,parent_start_block_index)?;
+        let parent_start_block = block_actions::start_block_read(&root,parent_start_block_index)?;
         let mut name_byte_vector : Vec<u8> = Vec::new();
 
         for byte in name.as_encoded_bytes(){
@@ -270,7 +267,7 @@ impl FilesystemMT for WeirdFileSystem{
         );
         	
         
-        create_empty_directory(&root,&mut parent_start_block.clone(),&mut child_start_block)?;
+        write_utils::create_empty_directory(&root,&mut parent_start_block.clone(),&mut child_start_block)?;
         let file_attr = child_start_block.clone().get_file_attr();
         let ttl = current_time.elapsed().unwrap();
         Ok(
@@ -295,10 +292,10 @@ impl FilesystemMT for WeirdFileSystem{
 				    .open(self.target.clone()).unwrap();
 		let full_path = parent.join(name);
 		let mut to_del_handle = FileHandle::new(Box::from(full_path));
-		let mut to_del_start_block = start_block_read(&root, to_del_handle.get_start_block_index(&root)?)?;
+		let mut to_del_start_block = block_actions::start_block_read(&root, to_del_handle.get_start_block_index(&root)?)?;
 		let mut parent_handle = FileHandle::new(Box::from(parent));
-		let mut parent_start_block = start_block_read(&root, parent_handle.get_start_block_index(&root)?)?;
-		delete_file(&root,&mut to_del_start_block,&mut parent_start_block)?;
+		let mut parent_start_block = block_actions::start_block_read(&root, parent_handle.get_start_block_index(&root)?)?;
+		deletion_utils::delete_file(&root,&mut to_del_start_block,&mut parent_start_block)?;
 		Ok(())
     }
 
@@ -316,10 +313,10 @@ impl FilesystemMT for WeirdFileSystem{
 				    .open(self.target.clone()).unwrap();
 		let full_path = parent.join(name);
 		let mut to_del_handle = FileHandle::new(Box::from(full_path));
-		let mut to_del_start_block = start_block_read(&root, to_del_handle.get_start_block_index(&root)?)?;
+		let mut to_del_start_block = block_actions::start_block_read(&root, to_del_handle.get_start_block_index(&root)?)?;
 		let mut parent_handle = FileHandle::new(Box::from(parent));
-		let mut parent_start_block = start_block_read(&root, parent_handle.get_start_block_index(&root)?)?; 
-		delete_directory(&root, &mut to_del_start_block, &mut parent_start_block)?;   
+		let mut parent_start_block = block_actions::start_block_read(&root, parent_handle.get_start_block_index(&root)?)?; 
+		deletion_utils::delete_directory(&root, &mut to_del_start_block, &mut parent_start_block)?;   
 		Ok(())    
     }
 
@@ -355,15 +352,15 @@ impl FilesystemMT for WeirdFileSystem{
 		let mut new_directory_handle = FileHandle::new(Box::from(newparent));
 
 		
-		let mut file_start_block = start_block_read(&root, old_file_handle.get_start_block_index(&root)?)?;
-		let mut old_directory_start_block = start_block_read(&root, old_directory_handle.get_start_block_index(&root)?)?;
-		let mut new_directory_start_block = start_block_read(&root, new_directory_handle.get_start_block_index(&root)?)?;
+		let mut file_start_block = block_actions::start_block_read(&root, old_file_handle.get_start_block_index(&root)?)?;
+		let mut old_directory_start_block = block_actions::start_block_read(&root, old_directory_handle.get_start_block_index(&root)?)?;
+		let mut new_directory_start_block = block_actions::start_block_read(&root, new_directory_handle.get_start_block_index(&root)?)?;
 
-		remove_directory_entry(&root, file_start_block.get_block_index().clone(),&mut old_directory_start_block)?;
-		append_directory_content(&root, file_start_block.get_block_index().clone(),&mut new_directory_start_block)?;
+		directory_actions::remove_directory_entry(&root, file_start_block.get_block_index().clone(),&mut old_directory_start_block)?;
+		directory_actions::append_directory_content(&root, file_start_block.get_block_index().clone(),&mut new_directory_start_block)?;
 
 		file_start_block.set_name(newname.to_str().unwrap());
-		start_block_write(&root, file_start_block)?;
+		block_actions::start_block_write(&root, file_start_block)?;
 		Ok(())
 		
 
@@ -423,9 +420,9 @@ impl FilesystemMT for WeirdFileSystem{
 				    .open(self.target.clone()).unwrap();
 
 		let handle = FileHandle::read(fh);
-		let mut start_block = start_block_read(&root,handle.start_block_index).unwrap();
+		let mut start_block = block_actions::start_block_read(&root,handle.start_block_index).unwrap();
 		
-		let	requested_data = read_file(
+		let	requested_data = file_utils::read_file(
 			&root,
 			&mut start_block,
 			usize::try_from(offset).unwrap(),
@@ -451,9 +448,20 @@ impl FilesystemMT for WeirdFileSystem{
         		    .write(true)
         		    .open(self.target.clone()).unwrap();
 		let handle = FileHandle::read(fh);
-		let mut start_block = start_block_read(&root,handle.start_block_index).unwrap();
+		let mut start_block = block_actions::start_block_read(&root,handle.start_block_index).unwrap();
 		let mut temp_data = data.clone();
-		Ok(u32::try_from(write_to_file(&root,usize::try_from(offset).unwrap(),&mut temp_data,&mut start_block)?).unwrap())
+		Ok(
+			u32::try_from(
+				write_utils::write_to_file(
+					&root,
+					usize::try_from(
+						offset
+					).unwrap(),
+					&mut temp_data,
+					&mut start_block
+				)?
+			).unwrap()
+		)
 		
         
 	}
@@ -535,8 +543,8 @@ impl FilesystemMT for WeirdFileSystem{
 				    .open(self.target.clone()).unwrap();
 
 		let handle = FileHandle::read(fh);
-		let start_block = start_block_read(&root,handle.start_block_index).unwrap();
-		let directory_entries = get_directory_entry_vec_from_start_block_index(&root,start_block.get_block_index().clone())?;
+		let start_block = block_actions::start_block_read(&root,handle.start_block_index).unwrap();
+		let directory_entries = directory_actions::get_directory_entry_vec_from_start_block_index(&root,start_block.get_block_index().clone())?;
 		Ok(directory_entries)
     }
 
@@ -573,8 +581,8 @@ impl FilesystemMT for WeirdFileSystem{
 				    .open(self.target.clone()).unwrap();
 
 		let handle = FileHandle::new(Box::from(path));
-		let start_block = start_block_read(&root,handle.start_block_index).unwrap();
-		let directory_entries = get_directory_entry_vec_from_start_block_index(&root,start_block.get_block_index().clone())?;
+		let start_block = block_actions::start_block_read(&root,handle.start_block_index).unwrap();
+		let directory_entries = directory_actions::get_directory_entry_vec_from_start_block_index(&root,start_block.get_block_index().clone())?;
         Ok(
 	        Statfs{
 	        	blocks : u64::MAX/2,
@@ -647,7 +655,7 @@ impl FilesystemMT for WeirdFileSystem{
 				    .open(self.target.clone()).unwrap();
         let mut temp_handle = FileHandle::new(Box::from(path));
 		let start_block_index = temp_handle.get_start_block_index(&root)?;
-		let start_block = start_block_read(&root, start_block_index)?;
+		let start_block = block_actions::start_block_read(&root, start_block_index)?;
        	if req.uid == 0 { //This means the the user is root
        		return Ok(())
        	}
@@ -689,7 +697,7 @@ impl FilesystemMT for WeirdFileSystem{
 				    .open(self.target.clone()).unwrap();
 		let mut temp_parent_handle = FileHandle::new(Box::from(parent));
 		let parent_start_block_index = temp_parent_handle.get_start_block_index(&root)?;
-		let parent_start_block = start_block_read(&root,parent_start_block_index)?;
+		let parent_start_block = block_actions::start_block_read(&root,parent_start_block_index)?;
 		let mut name_byte_vector : Vec<u8> = Vec::new();
 
 		for byte in name.as_encoded_bytes(){
@@ -716,7 +724,7 @@ impl FilesystemMT for WeirdFileSystem{
 		);
 			
 		
-        create_empty_file(&root,&mut parent_start_block.clone(),&mut child_start_block)?;
+        write_utils::create_empty_file(&root,&mut parent_start_block.clone(),&mut child_start_block)?;
         let child_handle = FileHandle::new(Box::from(parent.join(PathBuf::from(name))));
         let handle_number = child_handle.allocate();
 		let file_attr = child_start_block.clone().get_file_attr();

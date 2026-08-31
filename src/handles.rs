@@ -4,7 +4,7 @@ use std::ptr;
 use std::path::PathBuf;
 use lazy_static::lazy_static;
 use super::blocks::{StartBlock,DataBlock};
-use super::driveActions::{get_start_block_from_path};
+use super::drive_actions::start_block_actions::*;
 use super::results::*;
 #[derive(Clone)]
 pub struct FileHandle {
@@ -15,7 +15,7 @@ pub struct FileHandle {
 
 
 
-// I love Doors
+/// I love Doors
 pub struct HandleStorage {
 	current : HashMap<u64, FileHandle>,
 	nextNum : u64,

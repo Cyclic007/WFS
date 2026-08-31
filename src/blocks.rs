@@ -3,12 +3,6 @@
 
 
 
-// each block is a total length of 256 bytes (2048 bits)
-// there is no real diffrence between a file data block and a directory data block
-// all blocks are diagramed in the spreadsheet file in the root of the git repo
-// block indexes are 4 bytes long (32 bits)
-// subsequint data blocks do not need to be consecutive when stored on drive
-// a null block index is 4294967295
 
 
 //block definitions
@@ -19,46 +13,56 @@ use std::time::*;
 // holds all metadata
 #[derive(Clone)]
 pub struct StartBlock{
+	/// 0x00  ->  0x03
+	/// defines the location of the block and is also used to check if a block is properly allocated
 	block_index 			: u32, 			// 0x00  ->  0x03
+	/// 0x04  ->  0x07
 	first_data_block_index 	: u32, 			// 0x04  ->  0x07
+	/// 0x08  ->  0x09
 	perms 					: u16,			// 0x08  ->  0x09
+	/// 0x0A  ->  0x0B
 	file_type 				: u16,			// 0x0A  ->  0x0B 
 	//4 bytes padding						// 0x0C  ->  0x0F
+	/// 0x10  ->  0x17
 	a_time 					: u64,			// 0x10  ->  0x17
+	/// 0x18  ->  0x1F
 	m_time 					: u64,			// 0x18  ->  0x1F
-	
+	/// 0x20  ->  0x23
 	user_id 				: u32,			// 0x20  ->  0x23
+	/// 0x20  ->  0x23
 	group_id 				: u32,			// 0x24  ->  0x27
+	/// 0x28  ->  0x2F
 	size 					: u64,			// 0x28  ->  0x2F
-
+	/// 0x30  ->  0xFF
 	name 					: [u8 ; 208]	// 0x30  ->  0xFF
 	
 }
 
-// holds any and all data
+/// holds data
 #[derive(Clone)]
 pub struct DataBlock{
+	/// 0x00  ->  0x03
+	/// defines the location of the block and is also used to check if a block is properly allocated
 	block_index 			: u32, 			// 0x00  ->  0x03
-
+	/// 0x04  ->  0xFB
 	data 					: [u8 ; 248],	// 0x04  ->  0xFB
-
+	/// 0xFC  ->  0xFF
+	/// holds the index of the next data block
 	next_block_index 		: u32			// 0xFC  ->  0xFF
 }
 
+
+/// holds a 256 [u8] array to be able to write to the file system
 #[derive(Clone)]
 pub struct RawBlock{
 	pub data : [u8 ; 256]					// 0x00  ->  0xFF
 }
 
-#[derive(Clone)]
-pub struct RawBlockWithIndex{
-	pub block_index : u32,					// 0x00  ->  0x03
-	pub data : [u8;252]						// 0x04  ->  0xFF
-}
 
 
 
 impl StartBlock {
+
 	pub fn new(
 		block_index : u32, 					// 0x00  ->  0x03
 		first_data_block_index : u32, 		// 0x04  ->  0x07
@@ -118,7 +122,7 @@ impl StartBlock {
 	pub fn set_raw_name(&mut self, new_raw_name : [u8 ; 208]) {self.name = new_raw_name}
 	pub fn set_name (&mut self, new_name : &str) {self.name = <[u8;208]>::try_from(new_name.as_bytes()).unwrap()}
 
-
+	/// gets the real [FileAttr] object for other functions
 	pub fn get_file_attr(&self) -> FileAttr {
 		FileAttr{
 			size: self.size,
@@ -207,7 +211,7 @@ impl DataBlock {
 	pub fn set_next_block_index(&mut self, new_index : u32) {self.next_block_index = new_index}
 
 
-	// This is specal and requires an offset so that you dont need to remove the data entirely to change it
+	/// This is specal and requires an offset so that you dont need to remove the data entirely to change it
 	pub fn set_data(&mut self , new_data : Vec<u8>, offset : usize) -> Result<u32, &'static str>{
 		if offset + new_data.len() > 248{
 			return Err("trying to write outside of block")
