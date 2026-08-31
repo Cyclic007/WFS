@@ -5,7 +5,8 @@ edition = "2024"
 author = "Cyclic"
 repository = "https://github.com/Cyclic007/WFS"
 description = "A fun weird fuse filesystem"
-readme = ""
+readme = "https://raw.githubusercontent.com/Cyclic007/WFS/refs/heads/master/README.md"
+license = "Apache"
 
 [dependencies]
 fuse_mt = "0.6.4"
