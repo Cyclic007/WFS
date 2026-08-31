@@ -5,7 +5,7 @@ edition = "2024"
 author = "Cyclic"
 repository = "https://github.com/Cyclic007/WFS"
 description = "A fun weird fuse filesystem"
-
+readme = ""
 
 [dependencies]
 fuse_mt = "0.6.4"
