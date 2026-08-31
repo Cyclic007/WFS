@@ -6,7 +6,7 @@ author = "Cyclic"
 repository = "https://github.com/Cyclic007/WFS"
 description = "A fun weird fuse filesystem"
 readme = "README.md"
-license = "Apache"
+license = "Apache-2.0"
 
 [dependencies]
 fuse_mt = "0.6.4"
