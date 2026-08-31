@@ -1,0 +1,23 @@
+<h1>WFS</h1>
+<p>Custom FUSE file system</p>
+<h2>The why?</h2>
+<p>This was made because Posix is an interesting spec and I wanted to make a Filesystem with FUSE to prove that with enough will you can just make things.</p>
+<h2>The how</h2>
+<p>This is made using the fuse_mt crate (While on a hamiltion the musical bender) and has a lot of the POSIX spec implemented.</p>
+<h2>testing</h2>
+<p>this filesystem implements rust test cases</p>
+<h2>Implementaion specs</h2>
+<ul>
+<li>this uses a static block size of 256 bytes</li>
+<li>each data block can store 248 bytes of data</li>
+<li>the max name size of a file is 208 bytes long</li>
+<li>links do NOT WORK (because of deletion implemenation)</li>
+<li>when a file is deleted all of its blocks are written to 0</li>
+<li>there is no chacheing in this system</li>
+<li>only root can change perms</li>
+<li>only root can change owners</li>
+<li>when directories are deleted ALL files in the directory are deleted</li>
+</ul>
+<h1>Windows (EWW)</h1>
+<h3>THIS FILE SYSTEM DOES IN NO WAY NATIVELY SUPPORT WINDOWS</h3>
+<p>if you want to try and mount a FUSE file system on windows using WSL you can try but NO support will be given</p>
