@@ -1,6 +1,6 @@
 [package]
 name = "weird_file_system"
-version = "0.1.0"
+version = "0.1.1"
 edition = "2024"
 author = "Cyclic"
 repository = "https://github.com/Cyclic007/WFS"
