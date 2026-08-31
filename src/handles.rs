@@ -5,6 +5,7 @@ use std::path::PathBuf;
 use lazy_static::lazy_static;
 use super::blocks::{StartBlock,DataBlock};
 use super::driveActions::{get_start_block_from_path};
+use super::results::*;
 #[derive(Clone)]
 pub struct FileHandle {
     pub path: Box<std::path::Path>,
@@ -114,9 +115,9 @@ impl FileHandle {
 		store.new_handle(self)
 	}
 
-	pub fn allocate_with_index(mut self, file: File) -> u64{
-		self.start_block_index = self.clone().get_start_block_index(&file);
-		self.allocate()
+	pub fn allocate_with_index(mut self, file: File) -> ResultHandleIndex{
+		self.start_block_index = self.clone().get_start_block_index(&file)?;
+		Ok(self.allocate())
 	}
 
     
@@ -140,10 +141,14 @@ impl FileHandle {
 
 
 	
-	pub fn get_start_block_index(&mut self, file : &File) -> u32{
-		let start_block = get_start_block_from_path(file,&OsString::try_from(self.path.to_str().unwrap()).unwrap()).unwrap().unwrap();	
+	pub fn get_start_block_index(&mut self, file : &File) -> ResultBlockIndex{
+		let start_block = match get_start_block_from_path(file,&OsString::try_from(self.path.to_str().unwrap()).unwrap())? {
+			Some(block) => block,
+			None => return Err(libc::ENOENT)
+			
+		};
 		self.start_block_index = start_block.clone().get_block_index().clone();
-		self.start_block_index	
+		Ok(self.start_block_index)
 	
 		
 	}

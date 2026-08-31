@@ -13,7 +13,6 @@ mod driveActions;
 mod handles;
 mod results;
 
-
 struct ConsoleLogger;
 
 impl log::Log for ConsoleLogger {

@@ -12,6 +12,21 @@ fn get_offset_from_block_index(block_index : u32) -> ResultBlockIndex{
 	Ok(u32::try_from(block_index*256).unwrap())
 }
 
+
+
+fn direct_block_deletion(
+	drive_file : &File,
+	block_index : u32
+) -> ResultEmpty {
+	if block_index == u32::MAX {
+		return Err(libc::EIO)
+	}
+	let write_offset = get_offset_from_block_index(block_index)?;
+	let crap : [u8;256] = [0;256];
+	drive_file.write_all_at(&crap,u64::from(write_offset)).unwrap();
+	Ok(())
+}
+
 fn direct_raw_block_read(
 	drive_file : &File,
 	block_index : u32,	
@@ -139,6 +154,9 @@ fn get_data_vec_from_data_block_vec(
 }
 
 
+
+
+
 fn get_directory_index_vec_from_data_block_vec(
 	data_block_vec : Vec<DataBlock>
 ) -> ResultBlockIndexVector{
@@ -228,10 +246,20 @@ pub fn get_start_block_from_path(
 	drive_file : &File,
 	path : &OsStr
 ) -> ResultStartBlockOption{
+	
+	if path.eq("/"){
+		return Ok(Some(start_block_read(drive_file,1)?))
+	}
+	
 	let name_list : Vec<&str> = path.to_str().unwrap().splitn(20, "/").collect();
 	let mut current_block_index = 1;
 	for name in name_list.clone(){
-		let current_start_block = get_start_block_from_name_and_directory_start_block_index ( drive_file , current_block_index , OsString::from(name))?.unwrap();
+		let current_start_block = match get_start_block_from_name_and_directory_start_block_index ( drive_file , current_block_index , OsString::from(name))?{
+			Some(block) => block,
+			None => start_block_read(drive_file,1)?
+			
+			
+		};
 		if current_start_block.get_name().eq(name_list[name_list.clone().len()-1]){
 			return Ok(Some(current_start_block))
 		}
@@ -414,10 +442,10 @@ pub fn write_to_file(
 
 
 	//first need to check if the file size needs to be changed and if it needs more blocks
-	let _total_size = start_block.get_size();
+	let total_size = start_block.get_size();
 	let data_size = data.len();
 	let final_changed_byte  = offset + data_size;
-	let total_inital_block_size = (f64::try_from(u32::try_from(data_size).unwrap()).unwrap() / 248.0).ceil();
+	let total_inital_block_size = (f64::try_from(u32::try_from(total_size.clone()).unwrap()).unwrap() / 248.0).ceil();
 	let final_modified_block_size : usize = (f64::try_from(u32::try_from(final_changed_byte).unwrap()).unwrap() / 248.0).ceil() as usize;
 	if total_inital_block_size < final_modified_block_size as f64 {
 		start_block.set_size(u64::try_from(final_changed_byte).unwrap());
@@ -506,6 +534,22 @@ fn modify_directory_contents(
 
 
 
+pub fn remove_directory_entry(
+	drive_file : &File,
+	start_block_entry_index_to_remove : u32,
+	directory_start_block : &mut StartBlock
+) -> ResultEmpty {
+	let data_block_vec = get_data_block_vec_from_start_block(drive_file,directory_start_block.clone())?;
+	let directory_entry_vector = get_directory_index_vec_from_data_block_vec(data_block_vec)?;
+	for i in 0..directory_entry_vector.len(){
+		if directory_entry_vector[i] == start_block_entry_index_to_remove{
+			modify_directory_contents(drive_file,u32::try_from(i).unwrap(),u32::MAX,directory_start_block);
+			return Ok(())
+		}
+	}
+	Err(libc::ENOENT)
+
+}
 
 
 
@@ -513,7 +557,7 @@ fn modify_directory_contents(
 
 
 
-fn append_directory_content(
+pub fn append_directory_content(
 	drive_file : &File,
 	new_directory_entry_data : u32,
 	directory_start_block : &mut StartBlock
@@ -568,21 +612,168 @@ pub fn create_empty_file(
 
 
 
+fn get_data_vector_from_start_block(
+	drive_file : &File,
+	start_block : &mut StartBlock
+) -> ResultDataVector {
+	Ok(
+		get_data_vec_from_data_block_vec(
+			get_data_block_vec_from_start_block(
+				drive_file,
+				start_block.clone()
+			)?
+		)?
+	)
+}
 
 
 
 
 
-// to write to file you must 
-//		block offset and byte offset
-//		check if the size of the data requires more blocks to be attached to the file
-//		attach the blocks
-//		split data to each block
-//		write the data to each block
-//		update file size
+
+
+pub fn read_file(
+	drive_file : &File,
+	start_block : &mut StartBlock,
+	offset : usize,
+	size : usize
+) -> ResultDataVector {
+	println!("reading {} bytes",size);
+	let full_data_vector = get_data_vector_from_start_block(drive_file,start_block)?;
+	let mut full_data_iter = full_data_vector.iter();
+	let mut returned_data_vector : Vec<u8> = Vec::with_capacity(size);
+	for _i in offset..(offset+size){
+		match full_data_iter.next(){
+			Some(byte) => returned_data_vector.push(byte.clone()),
+			None => return Ok(returned_data_vector)
+		}
+	} 
+	Ok(returned_data_vector)
+	
+}
 
 
 
 
+pub fn deallocate_data_blocks_from_end(
+	drive_file : &File,
+	start_block : &mut StartBlock,
+	number_of_blocks : usize
+) -> ResultEmpty {
+	let mut data_block_vector = get_data_block_vec_from_start_block(drive_file,start_block.clone())?;
+	if data_block_vector.len() >= number_of_blocks{
+		return Err(libc::EDOM)
+	}
+
+	for _i in 0..number_of_blocks {
+		let current_block = match data_block_vector.pop(){
+			Some(block) => block,
+			None => return Err(libc::EIO)
+		};
+		direct_block_deletion(drive_file,current_block.get_block_index().clone())?;
+		
+	}
+	let mut new_last_block = data_block_vector.pop().unwrap();
+	new_last_block.set_next_block_index(u32::MAX);
+	Ok(())
+}
 
 
+pub fn deallocate_all_blocks(
+	drive_file : &File,
+	start_block : &mut StartBlock
+) -> ResultEmpty {
+	let data_block_vec = get_data_block_vec_from_start_block(drive_file,start_block.clone())?;
+	let mut indexes_to_delete : Vec<u32> = Vec::new();
+	for block in data_block_vec{
+		indexes_to_delete.push(block.get_block_index().clone());
+		
+	}
+	indexes_to_delete.push(start_block.get_block_index().clone());
+	for index in indexes_to_delete{
+		direct_block_deletion(drive_file,index);
+	}
+	Ok(())
+}
+
+pub fn delete_file(
+	drive_file : &File,
+	start_block : &mut StartBlock,
+	parent_start_block : &mut StartBlock
+) -> ResultEmpty {
+	remove_directory_entry(drive_file,start_block.get_block_index().clone(),parent_start_block);
+	deallocate_all_blocks(drive_file,start_block);
+	Ok(())
+}
+
+
+pub fn delete_all_files_in_directory(
+	drive_file : &File,
+	directory_start_block: &mut StartBlock
+) -> ResultEmpty {
+	let child_start_block_index_vector = get_directory_data_from_start_block_index(drive_file, directory_start_block.get_block_index().clone())?;
+	for block_index in child_start_block_index_vector{
+		delete_file(
+			drive_file,
+			&mut start_block_read(drive_file,block_index)?,
+			directory_start_block,
+		)?;
+	}
+	Ok(())
+}
+
+
+
+pub fn delete_directory (
+	drive_file : &File,
+	directory_start_block : &mut StartBlock,
+	parent_start_block : &mut StartBlock
+) -> ResultEmpty {
+	delete_all_files_in_directory(
+		drive_file,
+		directory_start_block
+	)?;
+	delete_file(
+		drive_file,
+		directory_start_block,
+		parent_start_block
+	)?;
+	Ok(())
+}
+
+
+
+pub fn reduce_file_size(
+	drive_file : &File,
+	start_block : &mut StartBlock,
+	new_size : u64
+) -> ResultEmpty {
+	let inital_file_size = start_block.get_size().clone();
+	if inital_file_size < new_size{
+		return Err(libc::EDOM)
+	}
+	let num_blocks_to_remove : usize =usize::try_from(new_size/248-inital_file_size/248).unwrap();
+
+	deallocate_data_blocks_from_end(
+		drive_file,
+		start_block,
+		num_blocks_to_remove
+	)?;
+
+
+	let number_of_extra_bytes_to_remove = (new_size-inital_file_size) as usize;
+	let mut new_data_block_vector = get_data_block_vec_from_start_block(drive_file,start_block.clone())?;
+	let mut last_block = new_data_block_vector.pop().unwrap();
+	let mut last_block_new_data : Vec<u8> = Vec::new();
+	for _i in 0..248-number_of_extra_bytes_to_remove{
+		last_block_new_data.push(0)
+	}
+	last_block.set_data(last_block_new_data,248-number_of_extra_bytes_to_remove).unwrap();
+	new_data_block_vector.push(last_block);
+	let mut block_index_vector : Vec<u32> = Vec::new();
+	for block in new_data_block_vector.clone(){
+		block_index_vector.push(block.get_block_index().clone());
+	}
+	data_block_vector_write(drive_file,new_data_block_vector,block_index_vector)?;
+	Ok(())
+}
