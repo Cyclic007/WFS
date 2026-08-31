@@ -13,8 +13,9 @@ This is made using the fuse_mt crate (While on a hamiltion the musical bender) a
 
 To run you use the executible like this
 
+
 '''
-WFS <target> <mount>
+weird_file_system /path/to/driveFile /path/to/mount/point
 '''
 
 when using a new formatted target file you must ensure that the entire target file is full of all zeros
@@ -22,7 +23,7 @@ when using a new formatted target file you must ensure that the entire target fi
 this can be done by running
 
 '''
-dd if=/dev/zero of=<drive_file_name.img> count=<size> 
+dd if=/dev/zero of=/path/to/driveFile count={size} 
 '''
 
 ## testing
